@@ -3,6 +3,16 @@
 一个基于 Manifest V3 和 html2canvas 的极简 Chrome 浏览器截图插件。
 A minimal Chrome screenshot extension built with Manifest V3 and html2canvas.
 
+
+
+## 仓库 | Repository
+
+```
+git clone https://github.com/moduwusuowei/screenshot-extension
+```
+
+
+
 ---
 
 ## 功能特点 | Features
@@ -100,6 +110,15 @@ git clone https://github.com/moduwusuowei/screenshot-extension
 
 插件自动处理跨域图片，保证截图正常显示。
 This extension automatically handles cross-origin images for proper rendering.
+
+**现存不足：**
+
+在截图过程中，无法捕获嵌入的图片。
+
+During the screenshot process, embedded images cannot be captured.
+
+
+
 
 ---
 

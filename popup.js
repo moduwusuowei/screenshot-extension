@@ -36,6 +36,23 @@ async function injectContentScript(tabId) {
   }
 }
 
+function sendMessageWithTimeout(tabId, message, timeoutMs = 65000) {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error('截图超时'));
+    }, timeoutMs);
+
+    chrome.tabs.sendMessage(tabId, message, (response) => {
+      clearTimeout(timeout);
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+      } else {
+        resolve(response);
+      }
+    });
+  });
+}
+
 async function handleScreenshotClick() {
   try {
     screenshotBtn.disabled = true;
@@ -47,11 +64,11 @@ async function handleScreenshotClick() {
     }
 
     await injectContentScript(tab.id);
-    await new Promise(resolve => setTimeout(resolve, 200));
+    await new Promise(resolve => setTimeout(resolve, 500));
 
-    const response = await chrome.tabs.sendMessage(tab.id, {
+    const response = await sendMessageWithTimeout(tab.id, {
       action: 'captureFullPage'
-    });
+    }, 30000);
 
     if (response && response.success) {
       showStatus('✅ 截图已保存');

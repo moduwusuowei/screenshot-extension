@@ -26,38 +26,142 @@ function downloadImage(dataUrl, fileName) {
  */
 async function captureFullPage() {
   return new Promise((resolve, reject) => {
-    // 先尝试使用 background 的 captureVisibleTab 截取可见区域
-    chrome.runtime.sendMessage({ action: 'captureVisibleTab' }, (response) => {
-      if (response && response.success) {
-        resolve(response.dataUrl);
-        return;
-      }
+    if (!window.html2canvas) {
+      reject(new Error('html2canvas未加载'));
+      return;
+    }
+
+    const timeout = setTimeout(() => {
+      restoreState();
+      reject(new Error('截图超时'));
+    }, 120000);
+
+    const body = document.body;
+    const html = document.documentElement;
+    const originalBodyHeight = body.style.height;
+    const originalBodyOverflow = body.style.overflow;
+    const originalHtmlHeight = html.style.height;
+    const originalHtmlOverflow = html.style.overflow;
+    const originalHtmlPosition = html.style.position;
+    const originalImages = [];
+
+    function restoreState() {
+      body.style.height = originalBodyHeight;
+      body.style.overflow = originalBodyOverflow;
+      html.style.height = originalHtmlHeight;
+      html.style.overflow = originalHtmlOverflow;
+      html.style.position = originalHtmlPosition;
       
-      // 如果失败，回退到 html2canvas
-      if (!window.html2canvas) {
-        reject(new Error('html2canvas未加载'));
+      originalImages.forEach(item => {
+        if (item.canvas && item.canvas.parentNode) {
+          item.canvas.parentNode.replaceChild(item.img, item.canvas);
+        }
+      });
+    }
+
+    const pageHeight = Math.max(
+      body.scrollHeight,
+      body.offsetHeight,
+      html.scrollHeight,
+      html.offsetHeight
+    );
+    const pageWidth = Math.max(
+      body.scrollWidth,
+      body.offsetWidth,
+      html.scrollWidth,
+      html.offsetWidth
+    );
+
+    const images = document.querySelectorAll('img');
+    let processed = 0;
+
+    function convertNextImage() {
+      if (processed >= images.length) {
+        startCapture();
         return;
       }
 
-      html2canvas(document.documentElement, {
-        useCORS: true,
-        allowTaint: true,
-        scale: window.devicePixelRatio || 1,
-        logging: false,
-        backgroundColor: null,
-        removeContainer: true,
-        useParseSVG: true,
-        preserveDrawingBuffer: true,
-        foreignObjectRendering: false,
-        letterRendering: true,
-        useWorker: false
-      }).then(canvas => {
-        const dataUrl = canvas.toDataURL('image/png');
-        resolve(dataUrl);
-      }).catch(error => {
-        reject(error);
-      });
-    });
+      const img = images[processed];
+      if (!img.src || img.src.startsWith('data:')) {
+        processed++;
+        convertNextImage();
+        return;
+      }
+
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const tempImg = new Image();
+      tempImg.crossOrigin = 'anonymous';
+
+      tempImg.onload = () => {
+        canvas.width = tempImg.width;
+        canvas.height = tempImg.height;
+        ctx.drawImage(tempImg, 0, 0);
+        
+        canvas.style.width = img.style.width || img.width + 'px';
+        canvas.style.height = img.style.height || img.height + 'px';
+        canvas.style.objectFit = img.style.objectFit || 'cover';
+        canvas.style.maxWidth = '100%';
+        
+        originalImages.push({ img, canvas });
+        img.parentNode.replaceChild(canvas, img);
+        
+        processed++;
+        convertNextImage();
+      };
+
+      tempImg.onerror = () => {
+        processed++;
+        convertNextImage();
+      };
+
+      tempImg.src = img.src;
+    }
+
+    function startCapture() {
+      body.style.height = pageHeight + 'px';
+      body.style.overflow = 'visible';
+      html.style.height = pageHeight + 'px';
+      html.style.overflow = 'visible';
+      html.style.position = 'relative';
+
+      setTimeout(() => {
+        html2canvas(html, {
+          useCORS: true,
+          allowTaint: true,
+          scale: window.devicePixelRatio || 1,
+          backgroundColor: '#ffffff',
+          removeContainer: true,
+          useParseSVG: true,
+          preserveDrawingBuffer: true,
+          foreignObjectRendering: false,
+          letterRendering: false,
+          useWorker: false,
+          width: pageWidth,
+          height: pageHeight,
+          windowWidth: pageWidth,
+          windowHeight: pageHeight,
+          scrollX: 0,
+          scrollY: 0
+        }).then(canvas => {
+          restoreState();
+          clearTimeout(timeout);
+          const dataUrl = canvas.toDataURL('image/png');
+          resolve(dataUrl);
+        }).catch(error => {
+          restoreState();
+          clearTimeout(timeout);
+          console.error('html2canvas截图失败:', error);
+          reject(error);
+        });
+      }, 1000);
+    }
+
+    if (images.length === 0) {
+      startCapture();
+    } else {
+      convertNextImage();
+    }
   });
 }
 
