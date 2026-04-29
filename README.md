@@ -63,15 +63,11 @@ Injected into webpage to capture screen.
 
 ### 开发模式安装 | Developer Mode
 
-1. 打开 Chrome → `chrome://extensions/`
-2. 开启右上角「开发者模式」
-3. 点击「加载已解压的扩展程序」
-4. 选择插件文件夹
+1. 打开 Chrome → `chrome://extensions/ `   | Open Chrome → `chrome://extensions/`
+2. 开启右上角「开发者模式」| Enable "Developer mode"
+3. 点击「加载已解压的扩展程序」 | Click "Load unpacked"
+4. 选择插件文件夹  | Select the extension folder
 
-5. Open Chrome → `chrome://extensions/`
-6. Enable "Developer mode"
-7. Click "Load unpacked"
-8. Select the extension folder
 
 ---
 
