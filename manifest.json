@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "一键网页截图助手",
+  "version": "1.0.0",
+  "description": "Use html2canvas to capture a screenshot of the webpage and support one-click download.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon16.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon16.png"
+    }
+  },
+  "permissions": ["activeTab", "scripting", "downloads"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["html2canvas.min.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}
