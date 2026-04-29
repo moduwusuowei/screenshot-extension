@@ -61,6 +61,14 @@ Injected into webpage to capture screen.
 
 ## 安装说明 | Installation
 
+1.git clone 本项目到本地：
+
+```
+git clone https://github.com/moduwusuowei/screenshot-extension
+```
+
+
+
 ### 开发模式安装 | Developer Mode
 
 1. 打开 Chrome → `chrome://extensions/ `   | Open Chrome → `chrome://extensions/`
