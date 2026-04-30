@@ -2,13 +2,19 @@
  * popup.js - 弹出页面脚本
  */
 
-const screenshotBtn = document.getElementById('screenshotBtn');
+const fullPageBtn = document.getElementById('fullPageBtn');
+const visibleBtn = document.getElementById('visibleBtn');
 const statusElement = document.getElementById('status');
 
 function showStatus(message, isLoading = false) {
   statusElement.innerHTML = isLoading 
     ? `<span class="loading"></span> ${message}` 
     : message;
+}
+
+function disableButtons(disabled) {
+  fullPageBtn.disabled = disabled;
+  visibleBtn.disabled = disabled;
 }
 
 async function getActiveTab() {
@@ -18,14 +24,12 @@ async function getActiveTab() {
 
 async function injectContentScript(tabId) {
   try {
-    // 先注入html2canvas
     await chrome.scripting.executeScript({
       target: { tabId: tabId },
       files: ['html2canvas.min.js']
     });
     console.log('html2canvas注入成功');
     
-    // 再注入content.js
     await chrome.scripting.executeScript({
       target: { tabId: tabId },
       files: ['content.js']
@@ -53,10 +57,10 @@ function sendMessageWithTimeout(tabId, message, timeoutMs = 65000) {
   });
 }
 
-async function handleScreenshotClick() {
+async function handleFullPageClick() {
   try {
-    screenshotBtn.disabled = true;
-    showStatus('正在截取页面...', true);
+    disableButtons(true);
+    showStatus('正在截取长图...', true);
 
     const tab = await getActiveTab();
     if (!tab) {
@@ -68,22 +72,50 @@ async function handleScreenshotClick() {
 
     const response = await sendMessageWithTimeout(tab.id, {
       action: 'captureFullPage'
-    }, 30000);
+    }, 65000);
 
     if (response && response.success) {
-      showStatus('✅ 截图已保存');
+      showStatus('✅ 长图已保存');
     } else {
-      throw new Error(response?.error || '截图失败');
+      throw new Error(response?.error || '长图截取失败');
     }
 
   } catch (error) {
-    console.error('截图失败:', error);
+    console.error('长图截取失败:', error);
     showStatus('❌ ' + error.message);
   } finally {
-    screenshotBtn.disabled = false;
+    disableButtons(false);
     setTimeout(() => showStatus(''), 3000);
   }
 }
 
-screenshotBtn.addEventListener('click', handleScreenshotClick);
+async function handleVisibleClick() {
+  try {
+    disableButtons(true);
+    showStatus('正在截取当前屏幕...', true);
+
+    chrome.runtime.sendMessage({ action: 'captureVisibleTab' }, (response) => {
+      if (response && response.success) {
+        const link = document.createElement('a');
+        link.download = `snap_${Date.now()}.png`;
+        link.href = response.dataUrl;
+        link.click();
+        showStatus('✅ 当前屏幕已保存');
+      } else {
+        showStatus('❌ ' + (response?.error || '截取失败'));
+      }
+      disableButtons(false);
+      setTimeout(() => showStatus(''), 3000);
+    });
+
+  } catch (error) {
+    console.error('截取失败:', error);
+    showStatus('❌ ' + error.message);
+    disableButtons(false);
+    setTimeout(() => showStatus(''), 3000);
+  }
+}
+
+fullPageBtn.addEventListener('click', handleFullPageClick);
+visibleBtn.addEventListener('click', handleVisibleClick);
 document.addEventListener('DOMContentLoaded', () => {});
