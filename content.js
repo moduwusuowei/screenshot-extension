@@ -24,6 +24,63 @@ function downloadImage(dataUrl, fileName) {
  * 截取整个页面
  * @returns {Promise<string>} - 图片的data URL
  */
+function replaceColorFunctions() {
+  const elements = document.querySelectorAll('*');
+  const colorProps = ['color', 'background', 'background-color', 'border-color', 'border-top-color', 'border-right-color', 'border-bottom-color', 'border-left-color', 'outline-color', 'text-shadow', 'box-shadow'];
+  
+  elements.forEach(el => {
+    const style = el.style;
+    colorProps.forEach(prop => {
+      try {
+        const value = style.getPropertyValue(prop);
+        if (value && value.includes('color(')) {
+          const computedStyle = window.getComputedStyle(el);
+          const computedValue = computedStyle.getPropertyValue(prop);
+          if (computedValue && !computedValue.includes('color(')) {
+            style.setProperty(prop, computedValue, style.getPropertyPriority(prop));
+          } else {
+            style.setProperty(prop, '#333333', style.getPropertyPriority(prop));
+          }
+        }
+      } catch (e) {
+        return;
+      }
+    });
+  });
+}
+
+function convertSVGsToCanvas() {
+  const svgs = document.querySelectorAll('svg');
+  svgs.forEach(svg => {
+    try {
+      const svgData = new XMLSerializer().serializeToString(svg);
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+      
+      img.onload = () => {
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
+        
+        canvas.style.width = svg.style.width || svg.getAttribute('width') || '100%';
+        canvas.style.height = svg.style.height || svg.getAttribute('height') || 'auto';
+        canvas.style.display = svg.style.display || 'inline-block';
+        
+        svg.parentNode.replaceChild(canvas, svg);
+      };
+      
+      img.onerror = () => {
+        console.log('SVG转换失败，保持原始SVG');
+      };
+      
+      img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+    } catch (e) {
+      console.log('SVG转换异常:', e);
+    }
+  });
+}
+
 async function captureFullPage() {
   return new Promise((resolve, reject) => {
     if (!window.html2canvas) {
@@ -32,33 +89,12 @@ async function captureFullPage() {
     }
 
     const timeout = setTimeout(() => {
-      restoreState();
       reject(new Error('截图超时'));
-    }, 120000);
+    }, 60000);
 
     const body = document.body;
     const html = document.documentElement;
-    const originalBodyHeight = body.style.height;
-    const originalBodyOverflow = body.style.overflow;
-    const originalHtmlHeight = html.style.height;
-    const originalHtmlOverflow = html.style.overflow;
-    const originalHtmlPosition = html.style.position;
-    const originalImages = [];
-
-    function restoreState() {
-      body.style.height = originalBodyHeight;
-      body.style.overflow = originalBodyOverflow;
-      html.style.height = originalHtmlHeight;
-      html.style.overflow = originalHtmlOverflow;
-      html.style.position = originalHtmlPosition;
-      
-      originalImages.forEach(item => {
-        if (item.canvas && item.canvas.parentNode) {
-          item.canvas.parentNode.replaceChild(item.img, item.canvas);
-        }
-      });
-    }
-
+    
     const pageHeight = Math.max(
       body.scrollHeight,
       body.offsetHeight,
@@ -72,96 +108,44 @@ async function captureFullPage() {
       html.offsetWidth
     );
 
-    const images = document.querySelectorAll('img');
-    let processed = 0;
+    replaceColorFunctions();
+    convertSVGsToCanvas();
 
-    function convertNextImage() {
-      if (processed >= images.length) {
-        startCapture();
-        return;
-      }
+    body.style.height = pageHeight + 'px';
+    body.style.overflow = 'visible';
+    html.style.height = pageHeight + 'px';
+    html.style.overflow = 'visible';
+    html.style.position = 'relative';
 
-      const img = images[processed];
-      if (!img.src || img.src.startsWith('data:')) {
-        processed++;
-        convertNextImage();
-        return;
-      }
-
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      const tempImg = new Image();
-      tempImg.crossOrigin = 'anonymous';
-
-      tempImg.onload = () => {
-        canvas.width = tempImg.width;
-        canvas.height = tempImg.height;
-        ctx.drawImage(tempImg, 0, 0);
-        
-        canvas.style.width = img.style.width || img.width + 'px';
-        canvas.style.height = img.style.height || img.height + 'px';
-        canvas.style.objectFit = img.style.objectFit || 'cover';
-        canvas.style.maxWidth = '100%';
-        
-        originalImages.push({ img, canvas });
-        img.parentNode.replaceChild(canvas, img);
-        
-        processed++;
-        convertNextImage();
-      };
-
-      tempImg.onerror = () => {
-        processed++;
-        convertNextImage();
-      };
-
-      tempImg.src = img.src;
-    }
-
-    function startCapture() {
-      body.style.height = pageHeight + 'px';
-      body.style.overflow = 'visible';
-      html.style.height = pageHeight + 'px';
-      html.style.overflow = 'visible';
-      html.style.position = 'relative';
-
-      setTimeout(() => {
-        html2canvas(html, {
-          useCORS: true,
-          allowTaint: true,
-          scale: window.devicePixelRatio || 1,
-          backgroundColor: '#ffffff',
-          removeContainer: true,
-          useParseSVG: true,
-          preserveDrawingBuffer: true,
-          foreignObjectRendering: false,
-          letterRendering: false,
-          useWorker: false,
-          width: pageWidth,
-          height: pageHeight,
-          windowWidth: pageWidth,
-          windowHeight: pageHeight,
-          scrollX: 0,
-          scrollY: 0
-        }).then(canvas => {
-          restoreState();
-          clearTimeout(timeout);
-          const dataUrl = canvas.toDataURL('image/png');
-          resolve(dataUrl);
-        }).catch(error => {
-          restoreState();
-          clearTimeout(timeout);
-          console.error('html2canvas截图失败:', error);
-          reject(error);
-        });
-      }, 1000);
-    }
-
-    if (images.length === 0) {
-      startCapture();
-    } else {
-      convertNextImage();
-    }
+    setTimeout(() => {
+      html2canvas(html, {
+        useCORS: true,
+        allowTaint: true,
+        scale: window.devicePixelRatio || 1,
+        backgroundColor: '#ffffff',
+        removeContainer: true,
+        useParseSVG: false,
+        preserveDrawingBuffer: true,
+        foreignObjectRendering: false,
+        letterRendering: false,
+        useWorker: false,
+        width: pageWidth,
+        height: pageHeight,
+        windowWidth: pageWidth,
+        windowHeight: pageHeight,
+        scrollX: 0,
+        scrollY: 0,
+        logging: false
+      }).then(canvas => {
+        clearTimeout(timeout);
+        const dataUrl = canvas.toDataURL('image/png');
+        resolve(dataUrl);
+      }).catch(error => {
+        clearTimeout(timeout);
+        console.error('html2canvas截图失败:', error);
+        reject(error);
+      });
+    }, 800);
   });
 }
 
