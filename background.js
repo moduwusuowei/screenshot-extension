@@ -16,7 +16,8 @@ function generateFileName() {
   const hours = String(now.getHours()).padStart(2, '0');
   const minutes = String(now.getMinutes()).padStart(2, '0');
   const seconds = String(now.getSeconds()).padStart(2, '0');
-  return `snap_${year}${month}${day}${hours}${minutes}${seconds}.png`;
+  const milliseconds = String(now.getMilliseconds()).padStart(3, '0').slice(0, 2);
+  return `snap_${year}${month}${day}${hours}${minutes}${seconds}${milliseconds}.png`;
 }
 
 /**
@@ -40,19 +41,81 @@ function captureVisibleTab() {
   });
 }
 
+async function injectScripts(tabId) {
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId: tabId },
+      files: ['html2canvas.min.js']
+    });
+    await new Promise(resolve => setTimeout(resolve, 300));
+    await chrome.scripting.executeScript({
+      target: { tabId: tabId },
+      files: ['content.js']
+    });
+    await new Promise(resolve => setTimeout(resolve, 300));
+    return true;
+  } catch (error) {
+    console.error('脚本注入失败:', error);
+    return false;
+  }
+}
+
+function sendMessageToTab(tabId, message, timeoutMs = 65000) {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error('消息超时'));
+    }, timeoutMs);
+
+    chrome.tabs.sendMessage(tabId, message, (response) => {
+      clearTimeout(timeout);
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+      } else {
+        resolve(response);
+      }
+    });
+  });
+}
+
 /**
  * 监听来自popup/content的消息
  */
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  // 处理可见区域截图请求（来自content script）
+chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
+  if (request.action === 'captureFullPage') {
+    try {
+      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+      const tab = tabs[0];
+      if (!tab) {
+        sendResponse({ success: false, error: '无法获取当前标签页' });
+        return;
+      }
+
+      const injected = await injectScripts(tab.id);
+      if (!injected) {
+        sendResponse({ success: false, error: '脚本注入失败' });
+        return;
+      }
+
+      const response = await sendMessageToTab(tab.id, { action: 'captureFullPage' }, 65000);
+      if (response && response.success) {
+        sendResponse({ success: true, fileName: generateFileName() });
+      } else {
+        sendResponse({ success: false, error: response?.error || '截图失败' });
+      }
+    } catch (error) {
+      console.error('长图截取失败:', error);
+      sendResponse({ success: false, error: error.message });
+    }
+    return true;
+  }
+
   if (request.action === 'captureVisibleTab') {
     captureVisibleTab()
-      .then(dataUrl => sendResponse({ success: true, dataUrl: dataUrl }))
+      .then(dataUrl => sendResponse({ success: true, dataUrl: dataUrl, fileName: generateFileName() }))
       .catch(error => sendResponse({ success: false, error: error.message }));
     return true;
   }
   
-  // 处理获取文件名请求
   if (request.action === 'getFileName') {
     sendResponse({ success: true, fileName: generateFileName() });
     return true;

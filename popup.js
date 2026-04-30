@@ -57,22 +57,27 @@ function sendMessageWithTimeout(tabId, message, timeoutMs = 65000) {
   });
 }
 
+function downloadImage(dataUrl, fileName) {
+  const link = document.createElement('a');
+  link.download = fileName;
+  link.href = dataUrl;
+  link.click();
+}
+
 async function handleFullPageClick() {
   try {
     disableButtons(true);
     showStatus('正在截取长图...', true);
 
-    const tab = await getActiveTab();
-    if (!tab) {
-      throw new Error('无法获取当前标签页');
-    }
-
-    await injectContentScript(tab.id);
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    const response = await sendMessageWithTimeout(tab.id, {
-      action: 'captureFullPage'
-    }, 65000);
+    const response = await new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({ action: 'captureFullPage' }, (response) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else {
+          resolve(response);
+        }
+      });
+    });
 
     if (response && response.success) {
       showStatus('✅ 长图已保存');
@@ -82,7 +87,10 @@ async function handleFullPageClick() {
 
   } catch (error) {
     console.error('长图截取失败:', error);
-    showStatus('❌ ' + error.message);
+    const errorMsg = error.message.includes('Receiving end does not exist') 
+      ? '连接失败，请刷新页面后重试' 
+      : error.message;
+    showStatus('❌ ' + errorMsg);
   } finally {
     disableButtons(false);
     setTimeout(() => showStatus(''), 3000);
@@ -94,23 +102,27 @@ async function handleVisibleClick() {
     disableButtons(true);
     showStatus('正在截取当前屏幕...', true);
 
-    chrome.runtime.sendMessage({ action: 'captureVisibleTab' }, (response) => {
-      if (response && response.success) {
-        const link = document.createElement('a');
-        link.download = `snap_${Date.now()}.png`;
-        link.href = response.dataUrl;
-        link.click();
-        showStatus('✅ 当前屏幕已保存');
-      } else {
-        showStatus('❌ ' + (response?.error || '截取失败'));
-      }
-      disableButtons(false);
-      setTimeout(() => showStatus(''), 3000);
+    const response = await new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage({ action: 'captureVisibleTab' }, (response) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else {
+          resolve(response);
+        }
+      });
     });
+
+    if (response && response.success) {
+      downloadImage(response.dataUrl, response.fileName);
+      showStatus('✅ 当前屏幕已保存');
+    } else {
+      throw new Error(response?.error || '截取失败');
+    }
 
   } catch (error) {
     console.error('截取失败:', error);
     showStatus('❌ ' + error.message);
+  } finally {
     disableButtons(false);
     setTimeout(() => showStatus(''), 3000);
   }
