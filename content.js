@@ -150,26 +150,32 @@ async function captureFullPage() {
 }
 
 /**
- * 监听来自popup的消息
+ * 监听来自popup/background的消息
  */
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  // 处理全页面截图请求
+  console.log('content.js收到消息:', request.action);
+
   if (request.action === 'captureFullPage') {
     captureFullPage()
       .then(dataUrl => {
-        // 获取文件名并下载
+        console.log('截图成功，准备下载');
         chrome.runtime.sendMessage({ action: 'getFileName' }, (response) => {
+          console.log('获取文件名响应:', response);
           if (response && response.success) {
             downloadImage(dataUrl, response.fileName);
             sendResponse({ success: true });
           } else {
-            sendResponse({ success: false, error: '获取文件名失败' });
+            downloadImage(dataUrl, 'screenshot.png');
+            sendResponse({ success: true });
           }
         });
       })
       .catch(error => {
+        console.error('截图失败:', error);
         sendResponse({ success: false, error: error.message });
       });
     return true;
   }
 });
+
+console.log('content.js已加载');

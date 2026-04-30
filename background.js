@@ -80,39 +80,53 @@ function sendMessageToTab(tabId, message, timeoutMs = 65000) {
 /**
  * 监听来自popup/content的消息
  */
-chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  console.log('background收到消息:', request.action);
+
   if (request.action === 'captureFullPage') {
-    try {
-      const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-      const tab = tabs[0];
-      if (!tab) {
-        sendResponse({ success: false, error: '无法获取当前标签页' });
-        return;
-      }
+    (async () => {
+      try {
+        const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+        const tab = tabs[0];
+        if (!tab) {
+          sendResponse({ success: false, error: '无法获取当前标签页' });
+          return;
+        }
 
-      const injected = await injectScripts(tab.id);
-      if (!injected) {
-        sendResponse({ success: false, error: '脚本注入失败' });
-        return;
-      }
+        console.log('开始注入脚本到标签页:', tab.id);
+        const injected = await injectScripts(tab.id);
+        if (!injected) {
+          sendResponse({ success: false, error: '脚本注入失败' });
+          return;
+        }
 
-      const response = await sendMessageToTab(tab.id, { action: 'captureFullPage' }, 65000);
-      if (response && response.success) {
-        sendResponse({ success: true, fileName: generateFileName() });
-      } else {
-        sendResponse({ success: false, error: response?.error || '截图失败' });
+        console.log('脚本注入成功，发送截图请求到content');
+        const response = await sendMessageToTab(tab.id, { action: 'captureFullPage' }, 65000);
+        console.log('收到content响应:', response);
+        
+        if (response && response.success) {
+          sendResponse({ success: true });
+        } else {
+          sendResponse({ success: false, error: response?.error || '截图失败' });
+        }
+      } catch (error) {
+        console.error('长图截取失败:', error);
+        sendResponse({ success: false, error: error.message });
       }
-    } catch (error) {
-      console.error('长图截取失败:', error);
-      sendResponse({ success: false, error: error.message });
-    }
+    })();
     return true;
   }
 
   if (request.action === 'captureVisibleTab') {
     captureVisibleTab()
-      .then(dataUrl => sendResponse({ success: true, dataUrl: dataUrl, fileName: generateFileName() }))
-      .catch(error => sendResponse({ success: false, error: error.message }));
+      .then(dataUrl => {
+        console.log('当前屏幕截图成功');
+        sendResponse({ success: true, dataUrl: dataUrl, fileName: generateFileName() });
+      })
+      .catch(error => {
+        console.error('当前屏幕截图失败:', error);
+        sendResponse({ success: false, error: error.message });
+      });
     return true;
   }
   
